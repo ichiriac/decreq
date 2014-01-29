@@ -68,7 +68,7 @@ declare(
 ```js
 declare(
     'foo',
-    function() {
+    function(context) {
         return {
             do: function() {
                 console.log('do something from foo - and show context var1 = ' + context.var1);
