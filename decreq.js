@@ -4,23 +4,25 @@
  * @see https://github.com/ichiriac/decreq
  * @license MIT
  */
+if (typeof DEBUG === 'undefined') DEBUG = false;
+DEBUG && console.log('start deq req');
 
 // require helper
 var require = function require(modules, closure) {
     if (typeof modules == 'string') {
         modules = [modules];
     }
-    var wait = [];
-    for(var m in modules) {
+    var wait = new Array();
+    for(var m = 0; m < modules.length; m++) {
         var module = modules[m];
         if ( typeof require.modules[module] === 'undefined' ) {
             // push to wait
             wait.push(module);
         }
     }
-    if ( wait.length > 0) {
+    if ( wait.length > (window.IE ? 1 : 0)) {
         // lazy load items
-        console.log('require ', wait);
+        DEBUG && console.log('require : ' + wait.join(', '));
         var result = {
             _handler: null
         };
@@ -37,11 +39,11 @@ var require = function require(modules, closure) {
 };
 require.register = function(module, definition) {
     require.modules[module] = definition;
-
     var parts = module.split(/\./g);
     var target = require.options.context;
-    for(var i in parts) {
+    for(var i =0; i < parts.length; i++) {
         var ns = parts[i];
+        if (typeof ns !== 'string') continue;
         if (typeof target[ns] === 'undefined') {
             target[ns] = {};
         }
@@ -50,10 +52,10 @@ require.register = function(module, definition) {
         }
     }
     if ( typeof definition === 'function') {
-        console.log('register ' + module + ' function');
+        DEBUG && console.log('register ' + module + ' function');
         target[ns] = definition;
     } else {
-        console.log('register ' + module, definition);
+        DEBUG && console.log('register ' + module, definition);
         for(var prop in definition) {
             target[ns][prop] = definition[prop];
         }
@@ -90,30 +92,38 @@ require.options = {
     variant: false,
     _stack: {
         scripts: {},
-        listeners: [],
+        listeners: new Array(),
         trigger: function(module) {
-            console.log('ready ' + module);
-            for(var i in this.listeners) {
-                var l = this.listeners[i];
-                if ( l.modules.indexOf(module) > -1 ) {
-                    l.wait -= 1;
-                    if ( l.wait < 1 ) {
-                        console.log('listener ready with ', l.modules);
-                        if (typeof l.callback == 'function') l.callback();
-                        delete this.listeners[i];
+            DEBUG && console.log('ready ' + module);
+            do {
+                var found = false;
+                for(var i =0; i < this.listeners.length; i++) {
+                    var l = this.listeners[i];
+                    if ( l.modules ) {
+                        if (l.modules.indexOf(module) > -1) {
+                            this.listeners[i].wait --;
+                            if ( this.listeners[i].wait < 1 ) {
+                                DEBUG && console.log('listener ready with ', l.modules);
+                                found = true;
+                                this.listeners.splice(i, 1);
+                                if (typeof l.callback == 'function') l.callback();
+                                break;
+                            }
+                        }
                     }
                 }
-            }
+            } while(found);
         }
     },
     load: function(modules, cb) {
         this._stack.listeners.push({
             modules: modules,
-            wait: modules.length,
+            wait: window.IE ? modules.length - 1 : modules.length,
             callback: cb
         });
-        for(var i in modules) {
-            var module = modules[i];
+        for(var m = 0; m < modules.length; m++) {
+            var module = modules[m];
+            if(typeof module != 'string') continue;
             var assets = this.finder(module);
             if ( assets ) {
                 if ( typeof assets == 'string') assets = [assets];
@@ -121,8 +131,9 @@ require.options = {
                 result._context[module] = require.modules[module] = {};
                 console.error('Unable to locate module ' + module);
             }
-            for(var i in assets) {
-                var file = assets[i];
+            for(var a =0; a < assets.length; a++) {
+                var file = assets[a];
+                if(typeof file != 'string') continue;
                 if (file.substring(file.length - 3) == 'css') {
                     this.css(file);
                 } else {
@@ -137,7 +148,7 @@ require.options = {
                         };
                         // checks if the module timeout (2 sec)
                         this._stack.scripts[file].timeout = setTimeout(function(module) {
-                            if (typeof require.modules[module] == 'undefined') {
+                            if (module && typeof require.modules[module] == 'undefined') {
                                 console.warn('Module ' + module + ' timeout (wait 5sec) !');
                                 declare(module, function() {
                                     return {};
@@ -150,7 +161,7 @@ require.options = {
                                 clearTimeout(this.timeout);
                             }
                             setTimeout(function(module) {
-                                if (typeof require.modules[module] == 'undefined') {
+                                if (module && typeof require.modules[module] == 'undefined') {
                                     console.warn('Module ' + module + ' not defined !');
                                     declare(module, function() {
                                         return {};
@@ -188,11 +199,11 @@ require.configure = function(options) {
 };
 // declaring a module
 var declare = function declare(module, closure) {
-    console.log('declare ' + module);
+    DEBUG && console.log('declare ' + module);
     //@debug
     if (typeof require.modules[module] !== 'undefined') {
         console.error('Module ' + module + ' is already defined !');
-        console.info(closure);
+        DEBUG && console.info(closure);
     }
     //@end
     if (typeof closure == 'function') {
@@ -201,8 +212,8 @@ var declare = function declare(module, closure) {
             closure(require.options.context)
         );
     } else if ( typeof closure._handler != 'undefined' ) {
-        console.log('pending ' + module, closure);
-        for(var i in require.options._stack.scripts) {
+        DEBUG && console.log('pending ' + module, closure);
+        for(var i=0; i < require.options._stack.scripts.length; i++) {
             var def = require.options._stack.scripts[i];
             if ( def.module == module && def.timeout ) {
                 clearTimeout(def.timeout);
